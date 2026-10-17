@@ -1,0 +1,44 @@
+name: Release
+
+# Push a version tag (e.g. v1.0.2) to build islays-tools.zip and publish a
+# GitHub release. Sites running the plugin pick it up as a normal WP update.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches plugin version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          HEADER=$(grep -E '^\s*\*\s*Version:' islays-tools.php | awk '{print $NF}')
+          CONSTANT=$(grep -oE "ISLAYS_TOOLS_VERSION', '[^']+'" islays-tools.php | grep -oE "[0-9][^']*")
+          echo "tag=$TAG header=$HEADER constant=$CONSTANT"
+          if [ "$TAG" != "$HEADER" ] || [ "$TAG" != "$CONSTANT" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match plugin Version header ($HEADER) and ISLAYS_TOOLS_VERSION ($CONSTANT)"
+            exit 1
+          fi
+
+      - name: Build zip
+        run: |
+          mkdir -p build/islays-tools
+          rsync -a ./ build/islays-tools/ \
+            --exclude '.git' --exclude '.github' --exclude '.idea' \
+            --exclude 'build' --exclude '._*' --exclude '.DS_Store' \
+            --exclude 'sratch.php'
+          cd build && zip -rq islays-tools.zip islays-tools
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/islays-tools.zip \
+            --title "$GITHUB_REF_NAME" --generate-notes
